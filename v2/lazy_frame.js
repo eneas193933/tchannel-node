@@ -24,6 +24,7 @@ var assert = require('assert');
 var bufrw = require('bufrw');
 var errors = require('../errors');
 
+var ObjectPool = require('../lib/object-pool.js');
 var Frame = require('./frame.js');
 
 module.exports = LazyFrame;
@@ -39,6 +40,22 @@ function LazyFrame() {
     self.body = null;
     self.bodyRW = null;
 }
+
+LazyFrame.prototype.reset =
+function reset() {
+    var self = this;
+
+    // TODO: free self.body
+
+    self.size = 0;
+    self.type = 0;
+    self.id = 0;
+    self.buffer = null;
+    self.body = null;
+    self.bodyRW = null;
+};
+
+ObjectPool.setup(LazyFrame);
 
 // size:2 type:1 reserved:1 id:4 reserved:8 ...
 LazyFrame.RW = bufrw.Base(lazyFrameLength, readLazyFrameFrom, writeLazyFrameInto);
@@ -79,7 +96,7 @@ function lazyFrameLength(lazyFrame) {
 
 function readLazyFrameFrom(buffer, offset) {
     var start = offset;
-    var lazyFrame = new LazyFrame();
+    var lazyFrame = LazyFrame.alloc();
 
     // size:2:
     lazyFrame.size = buffer.readUInt16BE(offset);
@@ -95,6 +112,7 @@ function readLazyFrameFrom(buffer, offset) {
     lazyFrame.bodyRW = Frame.Types[lazyFrame.type].RW;
 
     if (!lazyFrame.bodyRW) {
+        lazyFrame.free();
         return bufrw.ReadResult.error(errors.InvalidFrameTypeError({
             typeNumber: lazyFrame.type
         }), offset + LazyFrame.TypeOffset);
