@@ -33,9 +33,50 @@ function Claim(ttl, tracing) {
 
 Claim.TypeCode = 0xc1;
 
-Claim.RW = bufrw.Struct(Claim, [
-    {name: 'ttl', rw: bufrw.UInt32BE}, // ttl:4
-    {name: 'tracing', rw: Tracing.RW}  // tracing:25
-]);
+Claim.RW = bufrw.Base(claimLength, readClaimFrom, writeClaimInto);
+
+function claimLength(body) {
+    var length = 0;
+
+    // ttl:4
+    length += bufrw.UInt32BE.width;
+
+    // tracing:25
+    length += 25; // Tracing.RW
+
+    return bufrw.LengthResult.just(length);
+}
+
+function readClaimFrom(buffer, offset) {
+    var res;
+    var body = new Claim();
+
+    // ttl:4
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.ttl = res.value;
+
+    // tracing:25
+    res = Tracing.RW.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.tracing = res.value;
+
+    res.value = body;
+    return res;
+}
+
+function writeClaimInto(body, buffer, offset) {
+    var res;
+
+    // ttl:4
+    res = bufrw.UInt32BE.writeInto(body.ttl, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // tracing:25
+    return Tracing.RW.writeInto(body.tracing, buffer, offset);
+}
 
 module.exports = Claim;
