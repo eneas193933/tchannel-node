@@ -40,12 +40,61 @@ function InitRequest(version, headers) {
 
 InitRequest.TypeCode = 0x01;
 
-InitRequest.RW = bufrw.Struct(InitRequest, [
-    {call: {writeInto: writeFieldGuard}},
-    {name: 'version', rw: bufrw.UInt16BE}, // version:2
-    {name: 'headers', rw: header.header2}, // nh:2 (hk~2 hv~2){nh}
-    {call: {readFrom: readFieldGuard}}
-]);
+InitRequest.RW = bufrw.Base(initReqLength, readInitReqFrom, writeInitReqInto);
+
+function initReqLength(body) {
+    var res;
+    var length = 0;
+
+    // version:2
+    length += bufrw.UInt16BE.length;
+
+    // nh:2 (hk~2 hv~2){nh}
+    res = header.header2.byteLength(body.headers);
+    if (res.err) return res;
+    length += res.length;
+
+    res.length = length;
+    return res;
+}
+
+function readInitReqFrom(buffer, offset) {
+    var res;
+    var body = new InitRequest();
+
+    // version:2
+    res = bufrw.UInt16BE.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.version = res.value;
+
+    // nh:2 (hk~2 hv~2){nh}
+    res = header.header2.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.headers = res.value;
+
+    return readFieldGuard(body, buffer, offset);
+}
+
+function writeInitReqInto(body, buffer, offset) {
+    var res;
+
+    res = writeFieldGuard(body, buffer, offset);
+    if (res.err) return res;
+
+    // version:2
+    res = bufrw.UInt16BE.writeInto(body.version, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // nh:2 (hk~2 hv~2){nh}
+    res = header.header2.writeInto(body.headers, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    return res;
+}
 
 // TODO: MissingInitHeaderError check / guard
 
@@ -58,12 +107,60 @@ function InitResponse(version, headers) {
 
 InitResponse.TypeCode = 0x02;
 
-InitResponse.RW = bufrw.Struct(InitResponse, [
-    {call: {writeInto: writeFieldGuard}},
-    {name: 'version', rw: bufrw.UInt16BE}, // version:2
-    {name: 'headers', rw: header.header2}, // nh:2 (hk~2 hv~2){nh}
-    {call: {readFrom: readFieldGuard}}
-]);
+InitResponse.RW = bufrw.Base(initResLength, readInitRes, writeInitRes);
+
+function initResLength(body) {
+    var res;
+    var length = 0;
+
+    // version:2
+    length += bufrw.UInt16BE.length;
+
+    // nh:2 (hk~2 hv~2){nh}
+    res = header.header2.byteLength(body.headers);
+    if (res.err) return res;
+    length += res.length;
+
+    return res;
+}
+
+function readInitRes(buffer, offset) {
+    var res;
+    var body = new InitResponse;
+
+    // version:2
+    res = bufrw.UInt16BE.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.version = res.value;
+
+    // nh:2 (hk~2 hv~2){nh}
+    res = header.header2.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.headers = res.value;
+
+    return readFieldGuard(body, buffer, offset);
+}
+
+function writeInitRes(body, buffer, offset) {
+    var res;
+
+    res = writeFieldGuard(body, buffer, offset);
+    if (res.err) return res;
+
+    // version:2
+    res = bufrw.UInt16BE.writeInto(body.version, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // nh:2 (hk~2 hv~2){nh}
+    res = header.header2.writeInto(body.headers, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    return res;
+}
 
 
 function writeFieldGuard(initBody, buffer, offset) {
@@ -75,7 +172,7 @@ function writeFieldGuard(initBody, buffer, offset) {
 function readFieldGuard(initBody, buffer, offset) {
     var err = requiredFieldGuard(initBody.headers);
     if (err) return ReadResult.error(err, offset);
-    else return ReadResult.just(offset);
+    else return ReadResult.just(offset, initBody);
 }
 
 function requiredFieldGuard(headers) {
