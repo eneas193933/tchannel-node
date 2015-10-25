@@ -31,7 +31,20 @@ function PingRequest() {
 }
 
 PingRequest.TypeCode = 0xd0;
-PingRequest.RW = bufrw.Struct(PingRequest, []);
+PingRequest.RW = bufrw.Base(pingReqLength, readPingReqFrom, writePingReqInto);
+
+function pingReqLength(body) {
+    return bufrw.LengthResult.just(0);
+}
+
+function readPingReqFrom(buffer, offset) {
+    var body = new PingRequest();
+    return bufrw.ReadResult.just(offset, body);
+}
+
+function writePingReqInto(body, buffer, offset) {
+    return bufrw.WriteResult.just(offset);
+}
 
 function PingResponse() {
     var self = this;
@@ -39,4 +52,17 @@ function PingResponse() {
 }
 
 PingResponse.TypeCode = 0xd1;
-PingResponse.RW = bufrw.Struct(PingResponse, []);
+PingResponse.RW = bufrw.Base(pingResLength, readPingResFrom, writePingResInto);
+
+function pingResLength(body) {
+    return bufrw.LengthResult.just(0);
+}
+
+function readPingResFrom(buffer, offset) {
+    var body = new PingResponse();
+    return bufrw.ReadResult.just(offset, body);
+}
+
+function writePingResInto(body, buffer, offset) {
+    return bufrw.WriteResult.just(offset);
+}
