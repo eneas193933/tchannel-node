@@ -61,16 +61,15 @@ allocCluster.test('connection.handler: lazy call handling', 2, function t(cluste
         }
         assert.deepEqual(res.value, Buffer('such'), 'expected called arg1');
 
-        this.sendCallBodies(frame.id, new v2.CallResponse(
-            0,                       // flags
-            0,                       // code
-            v2.Tracing.emptyTracing, // tracing
-            {                        // headers
-                'as': 'troll'        //
-            },                       //
-            v2.Checksum.Types.None,  // checksum
-            ['', 'yeah', 'lol']      // args
-        ), null, null, null);
+        var body       = v2.CallResponse.alloc();
+        body.flags     = 0;                        // flags
+        body.code      = 0;                        // code
+        body.tracing   = v2.Tracing.emptyTracing;  // tracing
+        body.headers   = {as: 'troll'};            // headers
+        body.csum.init(v2.Checksum.Types.None, 0); // checksum
+        body.args      = ['', 'yeah', 'lol'];      // args
+
+        this.sendCallBodies(frame.id, body, null, null, null);
 
         return true;
     }

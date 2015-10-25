@@ -38,11 +38,12 @@ var Bytes = [
 
     0x04, 0x64, 0x6f, 0x67, 0x65 // junk bytes
 ];
-var lazyFrame = new v2.LazyFrame(
-    0x15, 0x03, 0x01,
-    new Buffer(Bytes)
-);
-lazyFrame.bodyRW = v2.Frame.Types[0x03].RW;
+var lazyFrame = v2.LazyFrame.alloc();
+lazyFrame.size = 0x15;
+lazyFrame.type = 0x03;
+lazyFrame.id = 0x01;
+lazyFrame.buffer = new Buffer(Bytes);
+lazyFrame.bodyRW = v2.Frame.Types[lazyFrame.type].RW;
 
 test('LazyFrame.RW: read/write', testRW.cases(v2.LazyFrame.RW, [
     [
@@ -113,27 +114,23 @@ TestBody.testWith('LazyFrame.setId', function t(assert) {
 });
 
 test('CallRequest.RW.lazy', function t(assert) {
-    var spanId = [0, 1];
-    var parentId = [2, 3];
-    var traceId = [4, 5];
-    var tracing = new v2.Tracing(
-        spanId, parentId, traceId
-    );
+    var spanId            = [0, 1];
+    var parentId          = [2, 3];
+    var traceId           = [4, 5];
+    var tracing           = new v2.Tracing(spanId, parentId, traceId);
+    var frame             = v2.Frame.alloc();
+    frame.id              = 24;                      // frame id
+    frame.body            = v2.CallRequest.alloc();  // frame body
+    frame.type            = frame.body.type;         //
+    frame.body.flags      = 42;                      // flags
+    frame.body.ttl        = 99;                      // ttl
+    frame.body.tracing    = tracing;                 // tracing
+    frame.body.service    = 'castle';                // service
+    frame.body.headers.cn = "mario";                 // headers.cn
+    frame.body.headers.as = 'plumber';               // headers.as
+    frame.body.csum.init(v2.Checksum.Types.None, 0); // csum
+    frame.body.args       = ['door', 'key', 'turn']; // args
 
-    var frame = new v2.Frame(24,    // frame id
-        new v2.CallRequest(         // frame body
-            42,                     // flags
-            99,                     // ttl
-            tracing,                // tracing
-            "castle",               // service
-            {                       // headers
-                "cn": "mario",      // headers.cn
-                "as": "plumber"     // headers.as
-            },                      //
-            v2.Checksum.Types.None, // csum
-            ["door", "key", "turn"] // args
-        )
-    );
     var buf = bufrw.toBuffer(v2.Frame.RW, frame);
 
     var lazyFrame = bufrw.fromBuffer(v2.LazyFrame.RW, buf);
@@ -220,25 +217,21 @@ test('CallRequest.RW.lazy', function t(assert) {
 });
 
 test('CallResponse.RW.lazy', function t(assert) {
-    var spanId = [0, 1];
-    var parentId = [2, 3];
-    var traceId = [4, 5];
-    var tracing = new v2.Tracing(
-        spanId, parentId, traceId
-    );
+    var spanId            = [0, 1];
+    var parentId          = [2, 3];
+    var traceId           = [4, 5];
+    var tracing           = new v2.Tracing(spanId, parentId, traceId);
+    var frame             = v2.Frame.alloc();
+    frame.id              = 24;                      // frame id
+    frame.body            = v2.CallResponse.alloc(); // frame body
+    frame.type            = frame.body.type;         //
+    frame.body.flags      = 42;                      // flags
+    frame.body.code       = 1;                       // code
+    frame.body.tracing    = tracing;                 // tracing
+    frame.body.headers.as = "plumber";               // headers.as
+    frame.body.csum.init(v2.Checksum.Types.None, 0); // csum
+    frame.body.args       = ["", "creak", "open"];   // args
 
-    var frame = new v2.Frame(24,    // frame id
-        new v2.CallResponse(        // frame body
-            42,                     // flags
-            1,                      // code
-            tracing,                // tracing
-            {                       // headers
-                "as": "plumber"     // headers.as
-            },                      //
-            v2.Checksum.Types.None, // csum
-            ["", "creak", "open"]   // args
-        )
-    );
     var buf = bufrw.toBuffer(v2.Frame.RW, frame);
 
     var lazyFrame = bufrw.fromBuffer(v2.LazyFrame.RW, buf);
@@ -303,15 +296,15 @@ test('CallResponse.RW.lazy', function t(assert) {
 });
 
 test('CallRequestCont.RW.lazy', function t(assert) {
-    var frame = new v2.Frame(24,    // frame id
-        new v2.CallRequestCont(     // frame body
-            42,                     // flags
-            v2.Checksum.Types.None, // csum
-            ["key", "turn"]         // args
-        )
-    );
-    var buf = bufrw.toBuffer(v2.Frame.RW, frame);
+    var frame            = v2.Frame.alloc();
+    frame.id             = 24;                         // frame id
+    frame.body           = v2.CallRequestCont.alloc(); // frame body
+    frame.type           = frame.body.type;            //
+    frame.body.flags     = 42;                         // flags
+    frame.body.csum.init(v2.Checksum.Types.None, 0);   // csum
+    frame.body.args      = ['key', 'turn'];            // args
 
+    var buf = bufrw.toBuffer(v2.Frame.RW, frame);
     var lazyFrame = bufrw.fromBuffer(v2.LazyFrame.RW, buf);
 
     // validate basic lazy frame properties
@@ -339,15 +332,15 @@ test('CallRequestCont.RW.lazy', function t(assert) {
 });
 
 test('CallResponseCont.RW.lazy', function t(assert) {
-    var frame = new v2.Frame(24,    // frame id
-        new v2.CallResponseCont(    // frame body
-            42,                     // flags
-            v2.Checksum.Types.None, // csum
-            ["key", "turn"]         // args
-        )
-    );
-    var buf = bufrw.toBuffer(v2.Frame.RW, frame);
+    var frame            = v2.Frame.alloc();
+    frame.id             = 24;                          // frame id
+    frame.body           = v2.CallResponseCont.alloc(); // frame body
+    frame.type           = frame.body.type;             //
+    frame.body.flags     = 42;                          // flags
+    frame.body.csum.init(v2.Checksum.Types.None, 0);    // csum
+    frame.body.args      = ['key', 'turn'];             // args
 
+    var buf = bufrw.toBuffer(v2.Frame.RW, frame);
     var lazyFrame = bufrw.fromBuffer(v2.LazyFrame.RW, buf);
 
     // validate basic lazy frame properties
@@ -382,15 +375,15 @@ test('ErrorResponse.RW.lazy', function t(assert) {
         spanId, parentId, traceId
     );
 
-    var frame = new v2.Frame(24,         // frame id
-        new v2.ErrorResponse(            // frame body
-            v2.ErrorResponse.Codes.Busy, // code
-            tracing,                     // tracing
-            "mess"                       // message
-        )
-    );
-    var buf = bufrw.toBuffer(v2.Frame.RW, frame);
+    var frame          = v2.Frame.alloc();
+    frame.id           = 24;                          // frame id
+    frame.body         = v2.ErrorResponse.alloc();    // frame body
+    frame.type         = frame.body.type;             //
+    frame.body.code    = v2.ErrorResponse.Codes.Busy; // code
+    frame.body.tracing = tracing;                     // tracing
+    frame.body.message = "mess";                      // message
 
+    var buf = bufrw.toBuffer(v2.Frame.RW, frame);
     var lazyFrame = bufrw.fromBuffer(v2.LazyFrame.RW, buf);
 
     // validate basic lazy frame properties

@@ -49,15 +49,19 @@ allocCluster.test('arg1 cannot be fragmented: incoming request', 2, function t(c
 
         req.hookupCallback(check);
 
-        conn.handler.pushFrame(new v2.Frame(req.id, new v2.CallRequest(
-            v2.CallFlags.Fragment,         // flags
-            100,                           // timeout
-            v2.Tracing.emptyTracing,       // tracing
-            'foo',                         // serviceName
-            {'as': 'raw', 'cn': 'batman'}, // req.headers
-            v2.Checksum.Types.None,        // checksum type
-            ['arg1_part']                  // non-terminated arg1
-        )));
+        var frame            = v2.Frame.alloc();
+        frame.id             = req.id;
+        frame.body           = v2.CallRequest.alloc();
+        frame.type           = frame.body.type;
+        frame.body.flags     = v2.CallFlags.Fragment;     // flags
+        frame.body.ttl       = 100;                       // timeout
+        frame.body.tracing   = v2.Tracing.emptyTracing;   // tracing
+        frame.body.sevice    = 'foo';                     // serviceName
+        frame.body.headers   = {as: 'raw', cn: 'batman'}; // req.headers
+        frame.body.csum.init(v2.Checksum.Types.None, 0);  // checksum type
+        frame.body.args      = ['arg1_part'];             // non-terminated arg1
+
+        conn.handler.pushFrame(frame);
     }
 
     function check(err, req, res) {
@@ -111,14 +115,19 @@ allocCluster.test('arg1 cannot be fragmented: incoming response', 2, function t(
 
     function brokenResponse(req, res, arg2, arg3) {
         var conn = req.connection;
-        conn.handler.pushFrame(new v2.Frame(req.id, new v2.CallResponse(
-            v2.CallFlags.Fragment,   // flags
-            0,                       // code
-            v2.Tracing.emptyTracing, // tracing
-            {'as': 'raw'},           // req.headers
-            v2.Checksum.Types.None,  // checksum type
-            ['arg1_part']            // non-terminated arg1
-        )));
+
+        var frame            = v2.Frame.alloc();
+        frame.id             = req.id;
+        frame.body           = v2.CallResponse.alloc();
+        frame.type           = frame.body.type;
+        frame.body.flags     = v2.CallFlags.Fragment;    // flags
+        frame.body.code      = 0;                        // code
+        frame.body.tracing   = v2.Tracing.emptyTracing;  // tracing
+        frame.body.headers   = {as: 'raw'};              // req.headers
+        frame.body.csum.init(v2.Checksum.Types.None, 0); // checksum type
+        frame.body.args      = ['arg1_part'];            // non-terminated arg1
+
+        conn.handler.pushFrame(frame);
         conn.onReqDone(req); // XXX: a bit coupled to implementation...
     }
 });
