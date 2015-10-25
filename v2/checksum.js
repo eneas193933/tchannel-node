@@ -33,6 +33,16 @@ module.exports = Checksum;
 // csumtype:1 (csum:4){0,1}
 function Checksum(type, val) {
     var self = this;
+
+    self.type = Checksum.Types.None;
+    self.val = 0;
+    self.init(type, val);
+}
+
+Checksum.prototype.init =
+function init(type, val) {
+    var self = this;
+
     self.type = type;
     self.val = val || 0;
     switch (self.type) {
@@ -51,7 +61,7 @@ function Checksum(type, val) {
         default:
             assert(false, 'invalid checksum type ' + self.type);
     }
-}
+};
 
 Checksum.objOrType = function objOrType(arg) {
     if (arg instanceof Checksum) {
