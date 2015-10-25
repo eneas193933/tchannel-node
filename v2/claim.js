@@ -22,14 +22,26 @@
 
 var bufrw = require('bufrw');
 var Tracing = require('./tracing');
+var ObjectPool = require('../lib/object-pool.js');
 
 // ttl:4 tracing:25
-function Claim(ttl, tracing) {
+function Claim() {
     var self = this;
+
     self.type = Claim.TypeCode;
-    self.ttl = ttl || 0;
-    self.tracing = tracing || Tracing.emptyTracing;
+    self.ttl = 0;
+    self.tracing = Tracing.emptyTracing;
 }
+
+Claim.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.ttl = 0;
+    self.tracing = Tracing.emptyTracing;
+};
+
+ObjectPool.setup(Claim);
 
 Claim.TypeCode = 0xc1;
 
@@ -49,7 +61,7 @@ function claimLength(body) {
 
 function readClaimFrom(buffer, offset) {
     var res;
-    var body = new Claim();
+    var body = Claim.alloc();
 
     // ttl:4
     res = bufrw.UInt32BE.readFrom(buffer, offset);
