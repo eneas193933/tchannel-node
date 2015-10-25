@@ -205,29 +205,40 @@ TChannelV2Handler.prototype.handleEagerFrame = function handleEagerFrame(frame) 
     var self = this;
     switch (frame.body.type) {
         case v2.Types.InitRequest:
-            return self.handleInitRequest(frame);
+            self.handleInitRequest(frame);
+            break;
         case v2.Types.InitResponse:
-            return self.handleInitResponse(frame);
+            self.handleInitResponse(frame);
+            break;
         case v2.Types.CallRequest:
-            return self.handleCallRequest(frame);
+            self.handleCallRequest(frame);
+            break;
         case v2.Types.CallResponse:
-            return self.handleCallResponse(frame);
+            self.handleCallResponse(frame);
+            break;
         case v2.Types.Cancel:
-            return self.handleCancel(frame);
+            self.handleCancel(frame);
+            break;
         case v2.Types.CallRequestCont:
-            return self.handleCallRequestCont(frame);
+            self.handleCallRequestCont(frame);
+            break;
         case v2.Types.CallResponseCont:
-            return self.handleCallResponseCont(frame);
+            self.handleCallResponseCont(frame);
+            break;
         case v2.Types.Claim:
-            return self.handleClaim(frame);
+            self.handleClaim(frame);
+            break;
         case v2.Types.PingRequest:
-            return self.handlePingRequest(frame);
+            self.handlePingRequest(frame);
+            break;
         case v2.Types.PingResponse:
-            return self.handlePingResponse(frame);
+            self.handlePingResponse(frame);
+            break;
         case v2.Types.ErrorResponse:
-            return self.handleError(frame);
+            self.handleError(frame);
+            break;
         default:
-            return self.errorEvent.emit(self, errors.TChannelUnhandledFrameTypeError({
+            self.errorEvent.emit(self, errors.TChannelUnhandledFrameTypeError({
                 typeCode: frame.body.type
             }));
     }
@@ -236,7 +247,8 @@ TChannelV2Handler.prototype.handleEagerFrame = function handleEagerFrame(frame) 
 TChannelV2Handler.prototype.handleInitRequest = function handleInitRequest(reqFrame) {
     var self = this;
     if (self.remoteName !== null) {
-        return self.errorEvent.emit(self, errors.DuplicateInitRequestError());
+        self.errorEvent.emit(self, errors.DuplicateInitRequestError());
+        return;
     }
     /* jshint camelcase:false */
     var headers = reqFrame.body.headers;
@@ -253,7 +265,8 @@ TChannelV2Handler.prototype.handleInitRequest = function handleInitRequest(reqFr
 TChannelV2Handler.prototype.handleInitResponse = function handleInitResponse(resFrame) {
     var self = this;
     if (self.remoteName !== null) {
-        return self.errorEvent.emit(self, errors.DuplicateInitResponseError());
+        self.errorEvent.emit(self, errors.DuplicateInitResponseError());
+        return;
     }
     /* jshint camelcase:false */
     var headers = resFrame.body.headers;
@@ -447,7 +460,8 @@ TChannelV2Handler.prototype.handleCancel = function handleCancel(frame) {
 TChannelV2Handler.prototype.handleCallRequestCont = function handleCallRequestCont(reqFrame, callback) {
     var self = this;
     if (self.remoteName === null) {
-        return self.errorEvent.emit(self, errors.CallReqContBeforeInitReqError());
+        self.errorEvent.emit(self, errors.CallReqContBeforeInitReqError());
+        return;
     }
     var id = reqFrame.id;
     var req = self.streamingReq[id];
@@ -458,9 +472,10 @@ TChannelV2Handler.prototype.handleCallRequestCont = function handleCallRequestCo
         // option for errors classified as 'BadRequest' to resolve through
         // something like `var refId = errors.badRequestRefId(err); if (refId
         // !== undefined) ...` then we could support it.
-        return self.errorEvent.emit(self, errors.OrphanCallRequestCont({
+        self.errorEvent.emit(self, errors.OrphanCallRequestCont({
             frameId: id
         }));
+        return;
     }
 
     self._handleCallFrame(req, reqFrame, self.streamingReq);
@@ -483,15 +498,17 @@ TChannelV2Handler.prototype.handleCallRequestCont = function handleCallRequestCo
 TChannelV2Handler.prototype.handleCallResponseCont = function handleCallResponseCont(resFrame) {
     var self = this;
     if (self.remoteName === null) {
-        return self.errorEvent.emit(self, errors.CallResContBeforeInitResError());
+        self.errorEvent.emit(self, errors.CallResContBeforeInitResError());
+        return;
     }
     var id = resFrame.id;
     var res = self.streamingRes[id];
     if (!res) {
         // TODO: see note in #handleCallRequestCont
-        return self.errorEvent.emit(self, errors.OrphanCallResponseCont({
+        self.errorEvent.emit(self, errors.OrphanCallResponseCont({
             frameId: id
         }));
+        return;
     }
 
     var req = self.connection.ops.getOutReq(res.id);
