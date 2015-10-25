@@ -179,11 +179,10 @@ ArgsRW.prototype.writeFragmentInto = function writeFragmentInto(body, buffer, of
         if (need > remain) {
             var j = remain - self.overhead;
             body.args[i] = arg.slice(0, j);
-            body.cont = new body.constructor.Cont(
-                body.flags & Flags.Fragment,
-                body.csum, // share on purpose
-                body.args.splice(i + 1)
-            );
+            body.cont = body.constructor.Cont.alloc();
+            body.cont.flags = body.flags & Flags.Fragment;
+            body.cont.csum = body.csum; // share on purpose
+            body.cont.args = body.args.splice(i + 1);
             body.cont.args.unshift(arg.slice(j));
             body.flags |= Flags.Fragment;
             arg = body.args[i];
