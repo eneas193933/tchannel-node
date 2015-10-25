@@ -31,23 +31,37 @@ module.exports = Frame;
 
 var bufrw = require('bufrw');
 var errors = require('../errors');
+var ObjectPool = require('../lib/object-pool.js');
 
 var Types = require('./index.js').Types;
 
 /* jshint maxparams:5 */
 
-function Frame(id, body) {
+function Frame() {
     var self = this;
+
     self.isLazy = false;
     self.size = 0;
-    self.type = (body && body.type) || 0;
-    if (id === null || id === undefined) {
-        self.id = Frame.NullId;
-    } else {
-        self.id = id;
-    }
-    self.body = body;
+    self.id = Frame.NullId;
+    self.type = 0;
+    self.body = null;
 }
+
+Frame.prototype.reset =
+function reset() {
+    var self = this;
+
+    if (self.body) {
+        self.body.free();
+    }
+    self.body = null;
+
+    self.size = 0;
+    self.id = Frame.NullId;
+    self.type = 0;
+};
+
+ObjectPool.setup(Frame);
 
 // size:2: type:1 reserved:1 id:4 reserved:8 ...
 Frame.RW = bufrw.Base(frameLength, readFrameFrom, writeFrameInto);
@@ -71,7 +85,7 @@ function frameLength(frame) {
 }
 
 function readFrameFrom(buffer, offset) {
-    var frame = new Frame();
+    var frame = Frame.alloc();
 
     var res;
 
@@ -87,9 +101,11 @@ function readFrameFrom(buffer, offset) {
 
     var BodyType = Frame.Types[frame.type];
     if (!BodyType) {
-        return bufrw.ReadResult.error(errors.InvalidFrameTypeError({
+        var err = errors.InvalidFrameTypeError({
             typeNumber: frame.type
-        }), offset - 1);
+        });
+        frame.free();
+        return bufrw.ReadResult.error(err, offset - 1);
     }
 
     offset += 1;
@@ -109,6 +125,7 @@ function readFrameFrom(buffer, offset) {
             // TODO: wrapped?
             res.err.frameId = frame.id;
         }
+        frame.free();
         return res;
     }
     offset = res.offset;
