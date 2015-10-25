@@ -130,7 +130,7 @@ TChannelV2Handler.prototype.writeCopy = function writeCopy(buffer) {
     self.write(copy);
 };
 
-TChannelV2Handler.prototype.pushFrame = function pushFrame(frame) {
+TChannelV2Handler.prototype.pushFrame = function pushFrame(frame, free) {
     var self = this;
 
     var isShared = !!self.writeBuffer;
@@ -150,6 +150,10 @@ TChannelV2Handler.prototype.pushFrame = function pushFrame(frame) {
         self.writeCopy(buf);
     } else {
         self.write(buf);
+    }
+
+    if (free) {
+        frame.free();
     }
 };
 
@@ -187,6 +191,7 @@ TChannelV2Handler.prototype.handleLazyFrame = function handleLazyFrame(frame) {
         case v2.Types.CallResponseCont:
         case v2.Types.ErrorResponse:
             if (self.handleCallLazily && self.handleCallLazily(frame)) {
+                // NOTE: lazy handling path now owns the frame and must free it
                 return;
             }
             break;
@@ -195,6 +200,7 @@ TChannelV2Handler.prototype.handleLazyFrame = function handleLazyFrame(frame) {
     var res = frame.readBody();
     if (res.err) {
         self.errorEvent.emit(res.err);
+        frame.free();
         return;
     }
 
@@ -242,6 +248,7 @@ TChannelV2Handler.prototype.handleEagerFrame = function handleEagerFrame(frame) 
                 typeCode: frame.body.type
             }));
     }
+    frame.free();
 };
 
 TChannelV2Handler.prototype.handleInitRequest = function handleInitRequest(reqFrame) {
@@ -620,9 +627,9 @@ TChannelV2Handler.prototype._handleCallFrame = function _handleCallFrame(r, fram
 TChannelV2Handler.prototype.sendInitRequest = function sendInitRequest() {
     var self = this;
     // TODO: assert(id === 1)?
-    var reqFrame = new v2.Frame();
+    var reqFrame = v2.Frame.alloc();
     reqFrame.id = self.nextFrameId();
-    var body = new v2.InitRequest();
+    var body = v2.InitRequest.alloc();
     reqFrame.body = body;
     reqFrame.type = body.type;
     body.version = v2.VERSION;
@@ -635,9 +642,9 @@ TChannelV2Handler.prototype.sendInitRequest = function sendInitRequest() {
 
 TChannelV2Handler.prototype.sendInitResponse = function sendInitResponse(reqFrame) {
     var self = this;
-    var resFrame = new v2.Frame();
+    var resFrame = v2.Frame.alloc();
     resFrame.id = reqFrame.id;
-    var body = new v2.InitResponse();
+    var body = v2.InitResponse.alloc();
     resFrame.body = body;
     resFrame.type = body.type;
     body.version = v2.VERSION;
@@ -661,7 +668,7 @@ function sendCallRequestFrame(req, flags, args) {
         return err;
     }
 
-    var body = new v2.CallRequest();
+    var body = v2.CallRequest.alloc();
     body.flags = flags;
     body.ttl = req.timeout;
     body.tracing = req.tracing;
@@ -747,7 +754,7 @@ function sendCallResponseFrame(res, flags, args) {
     }
 
     var req = res.inreq;
-    var body = new v2.CallResponse();
+    var body = v2.CallResponse.alloc();
     body.flags = flags;
     body.code = res.code;
     body.tracing = res.tracing;
@@ -791,7 +798,7 @@ TChannelV2Handler.prototype.sendCallRequestContFrame = function sendCallRequestC
         return;
     }
 
-    var body = new v2.CallRequestCont();
+    var body = v2.CallRequestCont.alloc();
     body.flags = flags;
     body.csum.init(req.checksum.type, 0);
     body.args = args;
@@ -813,7 +820,7 @@ TChannelV2Handler.prototype.sendCallResponseContFrame = function sendCallRespons
     }
 
     var req = res.inreq;
-    var body = new v2.CallResponseCont();
+    var body = v2.CallResponseCont.alloc();
     body.flags = flags;
     body.csum.init(res.checksum.type, 0);
     body.args = args;
@@ -831,7 +838,7 @@ TChannelV2Handler.prototype.sendCallBodies =
 function sendCallBodies(id, body, checksum, chanStat, tags) {
     var self = this;
     var channel = self.connection.channel;
-    var frame = new v2.Frame();
+    var frame = v2.Frame.alloc();
 
     var size = 0;
     // jshint boss:true
@@ -843,10 +850,19 @@ function sendCallBodies(id, body, checksum, chanStat, tags) {
         frame.id = id;
         frame.body = body;
         frame.type = body.type;
-        self.pushFrame(frame);
+        self.pushFrame(frame, false);
         checksum = body.csum;
         size += frame.size;
-    } while (body = body.cont);
+
+        var next = body.cont;
+        body.free();
+        frame.body = null;
+        body = next;
+    } while (body);
+
+    if (frame) {
+        frame.free();
+    }
 
     if (chanStat) {
         var stat = channel.buildStat(chanStat, 'counter', size, tags);
@@ -859,9 +875,9 @@ function sendCallBodies(id, body, checksum, chanStat, tags) {
 
 TChannelV2Handler.prototype.sendPingRequest = function sendPingRequest() {
     var self = this;
-    var frame = new v2.Frame();
+    var frame = v2.Frame.alloc();
     var id = frame.id = self.nextFrameId();
-    frame.body = new v2.PingRequest();
+    frame.body = v2.PingRequest.alloc();
     frame.type = frame.body.type;
     self.pushFrame(frame);
     return id;
@@ -869,9 +885,9 @@ TChannelV2Handler.prototype.sendPingRequest = function sendPingRequest() {
 
 TChannelV2Handler.prototype.sendPingReponse = function sendPingReponse(res) {
     var self = this;
-    var frame = new v2.Frame();
+    var frame = v2.Frame.alloc();
     frame.id = res.id;
-    frame.body = new v2.PingResponse();
+    frame.body = v2.PingResponse.alloc();
     frame.type = frame.body.type;
     self.pushFrame(frame);
 };
@@ -886,9 +902,9 @@ TChannelV2Handler.prototype.sendErrorFrame = function sendErrorFrame(id, tracing
         code = v2.ErrorResponse.Codes.UnexpectedError;
         message = 'UNKNOWN CODE(' + codeString + '): ' + message;
     }
-    var frame = new v2.Frame();
+    var frame = v2.Frame.alloc();
     frame.id = id;
-    var body = frame.body = new v2.ErrorResponse();
+    var body = frame.body = v2.ErrorResponse.alloc();
     frame.type = body.type;
     body.code = code;
     body.tracing = tracing;
