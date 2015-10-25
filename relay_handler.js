@@ -49,7 +49,9 @@ RelayHandler.prototype.handleLazily = function handleLazily(conn, reqFrame) {
         return false;
     }
 
-    var rereq = new LazyRelayInReq(conn, reqFrame, now);
+    var rereq = new LazyRelayInReq();
+    rereq.init(conn, reqFrame, now);
+
     var err = rereq.initRead();
     if (err) {
         rereq.onError(err);
@@ -140,18 +142,18 @@ RelayHandler.prototype.handleRequest = function handleRequest(req, buildRes) {
 // TODO: lazy reqs
 // - audit #extendLogInfo vs regular reqs
 
-function LazyRelayInReq(conn, reqFrame, now) {
+function LazyRelayInReq() {
     var self = this;
 
-    self.channel = conn.channel;
-    self.conn = conn;
-    self.start = now;
-    self.remoteAddr = conn.remoteName;
-    self.logger = conn.logger;
+    self.channel = null;
+    self.logger = null;
+    self.conn = null;
+    self.start = 0;
+    self.remoteAddr = '';
     self.peer = null;
     self.outreq = null;
-    self.reqFrame = reqFrame;
-    self.id = self.reqFrame.id;
+    self.reqFrame = null;
+    self.id = 0;
     self.serviceName = '';
     self.callerName = '';
     self.timeout = 0;
@@ -178,6 +180,19 @@ function LazyRelayInReq(conn, reqFrame, now) {
         }
     }
 }
+
+LazyRelayInReq.prototype.init =
+function init(conn, reqFrame, now) {
+    var self = this;
+
+    self.channel = conn.channel;
+    self.conn = conn;
+    self.start = now;
+    self.remoteAddr = conn.remoteName;
+    self.logger = conn.logger;
+    self.reqFrame = reqFrame;
+    self.id = self.reqFrame.id;
+};
 
 LazyRelayInReq.prototype.type = 'tchannel.lazy.incoming-request';
 
@@ -325,7 +340,8 @@ function forwardTo(conn) {
         return;
     }
 
-    self.outreq = new LazyRelayOutReq(conn, self, now);
+    self.outreq = new LazyRelayOutReq();
+    self.outreq.init(conn, self, now);
 
     self.outreq.timeout = ttl;
     conn.ops.addOutReq(self.outreq);
@@ -506,7 +522,27 @@ function _observeCallReqContFrame(frame) {
     ));
 };
 
-function LazyRelayOutReq(conn, inreq, now) {
+function LazyRelayOutReq() {
+    var self = this;
+
+    self.channel = null;
+    self.logger = null;
+    self.conn = null;
+    self.start = 0;
+    self.remoteAddr = '';
+    self.inreq = null;
+    self.id = 0;
+    self.serviceName = '';
+    self.callerName = '';
+    self.timeout = 0;
+    self.operations = null;
+    self.timeHeapHandle = null;
+}
+
+LazyRelayOutReq.prototype.type = 'tchannel.lazy.outgoing-request';
+
+LazyRelayOutReq.prototype.init =
+function init(conn, inreq, now) {
     var self = this;
 
     self.channel = conn.channel;
@@ -521,9 +557,7 @@ function LazyRelayOutReq(conn, inreq, now) {
     self.timeout = 0;
     self.operations = null;
     self.timeHeapHandle = null;
-}
-
-LazyRelayOutReq.prototype.type = 'tchannel.lazy.outgoing-request';
+};
 
 LazyRelayOutReq.prototype.extendLogInfo =
 function extendLogInfo(info) {
