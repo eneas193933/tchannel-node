@@ -667,8 +667,7 @@ function sendCallRequestFrame(req, flags, args) {
     body.tracing = req.tracing;
     body.service = req.serviceName;
     body.headers = req.headers;
-    body.csum.type = req.checksum.type;
-    body.csum.val = 0;
+    body.csum.init(req.checksum.type, 0);
     body.args = args;
 
     req.checksum = self.sendCallBodies(
@@ -753,8 +752,7 @@ function sendCallResponseFrame(res, flags, args) {
     body.code = res.code;
     body.tracing = res.tracing;
     body.headers = res.headers;
-    body.csum.type = res.checksum.type;
-    body.csum.val = 0;
+    body.csum.init(res.checksum.type, 0);
     body.args = args;
 
     res.checksum = self.sendCallBodies(
@@ -795,8 +793,7 @@ TChannelV2Handler.prototype.sendCallRequestContFrame = function sendCallRequestC
 
     var body = new v2.CallRequestCont();
     body.flags = flags;
-    body.csum.type = req.checksum.type;
-    body.csum.val = 0;
+    body.csum.init(req.checksum.type, 0);
     body.args = args;
 
     req.checksum = self.sendCallBodies(
@@ -818,8 +815,7 @@ TChannelV2Handler.prototype.sendCallResponseContFrame = function sendCallRespons
     var req = res.inreq;
     var body = new v2.CallResponseCont();
     body.flags = flags;
-    body.csum.type = res.checksum.type;
-    body.csum.val = 0;
+    body.csum.init(res.checksum.type, 0);
     body.args = args;
 
     res.checksum = self.sendCallBodies(
