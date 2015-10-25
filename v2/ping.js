@@ -22,6 +22,8 @@
 
 var bufrw = require('bufrw');
 
+var ObjectPool = require('../lib/object-pool.js');
+
 module.exports.Request = PingRequest;
 module.exports.Response = PingResponse;
 
@@ -29,6 +31,8 @@ function PingRequest() {
     var self = this;
     self.type = PingRequest.TypeCode;
 }
+
+ObjectPool.setup(PingRequest);
 
 PingRequest.TypeCode = 0xd0;
 PingRequest.RW = bufrw.Base(pingReqLength, readPingReqFrom, writePingReqInto);
@@ -38,7 +42,7 @@ function pingReqLength(body) {
 }
 
 function readPingReqFrom(buffer, offset) {
-    var body = new PingRequest();
+    var body = PingRequest.alloc();
     return bufrw.ReadResult.just(offset, body);
 }
 
@@ -51,6 +55,8 @@ function PingResponse() {
     self.type = PingResponse.TypeCode;
 }
 
+ObjectPool.setup(PingResponse);
+
 PingResponse.TypeCode = 0xd1;
 PingResponse.RW = bufrw.Base(pingResLength, readPingResFrom, writePingResInto);
 
@@ -59,7 +65,7 @@ function pingResLength(body) {
 }
 
 function readPingResFrom(buffer, offset) {
-    var body = new PingResponse();
+    var body = PingResponse.alloc();
     return bufrw.ReadResult.just(offset, body);
 }
 
