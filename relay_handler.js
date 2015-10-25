@@ -43,12 +43,13 @@ RelayHandler.prototype.type = 'tchannel.relay-handler';
 
 RelayHandler.prototype.handleLazily = function handleLazily(conn, reqFrame) {
     var self = this;
+    var now = conn.timers.now();
 
     if (!self.lazyEnabled) {
         return false;
     }
 
-    var rereq = new LazyRelayInReq(conn, reqFrame);
+    var rereq = new LazyRelayInReq(conn, reqFrame, now);
     var err = rereq.initRead();
     if (err) {
         rereq.onError(err);
@@ -139,12 +140,12 @@ RelayHandler.prototype.handleRequest = function handleRequest(req, buildRes) {
 // TODO: lazy reqs
 // - audit #extendLogInfo vs regular reqs
 
-function LazyRelayInReq(conn, reqFrame) {
+function LazyRelayInReq(conn, reqFrame, now) {
     var self = this;
 
     self.channel = conn.channel;
     self.conn = conn;
-    self.start = conn.timers.now();
+    self.start = now;
     self.remoteAddr = conn.remoteName;
     self.logger = conn.logger;
     self.peer = null;
@@ -316,13 +317,15 @@ LazyRelayInReq.prototype.forwardTo =
 function forwardTo(conn) {
     var self = this;
 
-    self.outreq = new LazyRelayOutReq(conn, self);
+    var now = conn.timers.now();
 
-    var ttl = self.updateTTL(self.outreq.start);
+    var ttl = self.updateTTL(now);
     if (!ttl || ttl < 0) {
         // error or timeout, observability handled already by #updateTTL
         return;
     }
+
+    self.outreq = new LazyRelayOutReq(conn, self, now);
 
     self.outreq.timeout = ttl;
     conn.ops.addOutReq(self.outreq);
@@ -335,7 +338,7 @@ function forwardTo(conn) {
 
     self.reqContFrames.length = 0;
 
-    var now = self.channel.timers.now();
+    now = self.channel.timers.now();
     self.channel.emitFastStat(self.channel.buildStat(
         'tchannel.relay.latency',
         'timing',
@@ -503,12 +506,12 @@ function _observeCallReqContFrame(frame) {
     ));
 };
 
-function LazyRelayOutReq(conn, inreq) {
+function LazyRelayOutReq(conn, inreq, now) {
     var self = this;
 
     self.channel = conn.channel;
     self.conn = conn;
-    self.start = conn.timers.now();
+    self.start = now;
     self.remoteAddr = conn.remoteName;
     self.logger = conn.logger;
     self.inreq = inreq;
