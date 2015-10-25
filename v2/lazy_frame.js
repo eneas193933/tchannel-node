@@ -28,15 +28,14 @@ var Frame = require('./frame.js');
 
 module.exports = LazyFrame;
 
-function LazyFrame(size, type, id, buffer) {
+function LazyFrame() {
     var self = this;
 
     self.isLazy = true;
-    self.size = size;
-    self.type = type;
-    self.id = id;
-    self.buffer = buffer;
-
+    self.size = 0;
+    self.type = 0;
+    self.id = 0;
+    self.buffer = null;
     self.body = null;
     self.bodyRW = null;
 }
@@ -80,19 +79,19 @@ function lazyFrameLength(lazyFrame) {
 
 function readLazyFrameFrom(buffer, offset) {
     var start = offset;
+    var lazyFrame = new LazyFrame();
 
     // size:2:
-    var size = buffer.readUInt16BE(offset);
-    offset += size;
-    var frameBuffer = buffer.slice(start, offset);
+    lazyFrame.size = buffer.readUInt16BE(offset);
+    offset += lazyFrame.size;
+    lazyFrame.buffer = buffer.slice(start, offset);
 
     // type:1
-    var type = frameBuffer.readUInt8(LazyFrame.TypeOffset);
+    lazyFrame.type = lazyFrame.buffer.readUInt8(LazyFrame.TypeOffset);
 
     // id:4
-    var id = frameBuffer.readUInt32BE(LazyFrame.IdOffset);
+    lazyFrame.id = lazyFrame.buffer.readUInt32BE(LazyFrame.IdOffset);
 
-    var lazyFrame = new LazyFrame(size, type, id, frameBuffer);
     lazyFrame.bodyRW = Frame.Types[lazyFrame.type].RW;
 
     if (!lazyFrame.bodyRW) {
