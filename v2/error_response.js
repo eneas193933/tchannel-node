@@ -24,6 +24,8 @@ var bufrw = require('bufrw');
 var WriteResult = bufrw.WriteResult;
 var ReadResult = bufrw.ReadResult;
 var TypedError = require('error/typed');
+
+var ObjectPool = require('../lib/object-pool.js');
 var Frame = require('./frame');
 var Tracing = require('./tracing');
 
@@ -33,13 +35,25 @@ var errors = require('../errors');
 // errorBody.code.ProtocolError = ErrorResponse.Codes.ProtocolError
 
 // code:1 tracing:25 message~2
-function ErrorResponse(code, tracing, message) {
+function ErrorResponse() {
     var self = this;
-    self.code = code || 0;
-    self.tracing = tracing || Tracing.emptyTracing;
+
     self.type = ErrorResponse.TypeCode;
-    self.message = message || '';
+    self.code = 0;
+    self.tracing = Tracing.emptyTracing;
+    self.message = '';
 }
+
+ErrorResponse.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.code = 0;
+    self.tracing = Tracing.emptyTracing;
+    self.message = '';
+};
+
+ObjectPool.setup(ErrorResponse);
 
 ErrorResponse.TypeCode = 0xff;
 
@@ -167,30 +181,41 @@ function errResLength(body) {
 
 function readErrResFrom(buffer, offset) {
     var res;
-    var body = new ErrorResponse();
+    var body = ErrorResponse.alloc();
 
     // code:1
     res = bufrw.UInt8.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.code = res.value;
 
     // tracing:25
     res = Tracing.RW.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.tracing = res.value;
 
     if (CodeNames[body.code] === undefined) {
-        return ReadResult.error(errors.InvalidErrorCodeError({
+        var err = errors.InvalidErrorCodeError({
             errorCode: body.code,
-            tracing: body.tracing,
-        }), offset);
+            tracing: body.tracing
+        });
+        body.free();
+        return ReadResult.error(err, offset);
     }
 
     // message~2
     res = bufrw.str2.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.message = res.value;
 
