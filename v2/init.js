@@ -23,7 +23,9 @@
 var bufrw = require('bufrw');
 var WriteResult = bufrw.WriteResult;
 var ReadResult = bufrw.ReadResult;
+
 var header = require('./header');
+var ObjectPool = require('../lib/object-pool.js');
 var errors = require('../errors');
 
 module.exports.Request = InitRequest;
@@ -31,12 +33,23 @@ module.exports.Response = InitResponse;
 
 var RequiredHeaderFields = ['host_port', 'process_name'];
 
-function InitRequest(version, headers) {
+function InitRequest() {
     var self = this;
+
     self.type = InitRequest.TypeCode;
-    self.version = version || 0;
-    self.headers = headers || {};
+    self.version = 0;
+    self.headers = {};
 }
+
+InitRequest.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.version = 0;
+    self.headers = {};
+};
+
+ObjectPool.setup(InitRequest);
 
 InitRequest.TypeCode = 0x01;
 
@@ -60,7 +73,7 @@ function initReqLength(body) {
 
 function readInitReqFrom(buffer, offset) {
     var res;
-    var body = new InitRequest();
+    var body = InitRequest.alloc();
 
     // version:2
     res = bufrw.UInt16BE.readFrom(buffer, offset);
@@ -98,12 +111,23 @@ function writeInitReqInto(body, buffer, offset) {
 
 // TODO: MissingInitHeaderError check / guard
 
-function InitResponse(version, headers) {
+function InitResponse() {
     var self = this;
+
     self.type = InitResponse.TypeCode;
-    self.version = version || 0;
-    self.headers = headers || {};
+    self.version = 0;
+    self.headers = {};
 }
+
+InitResponse.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.version = 0;
+    self.headers = {};
+};
+
+ObjectPool.setup(InitResponse);
 
 InitResponse.TypeCode = 0x02;
 
@@ -126,7 +150,7 @@ function initResLength(body) {
 
 function readInitRes(buffer, offset) {
     var res;
-    var body = new InitResponse;
+    var body = InitResponse.alloc();
 
     // version:2
     res = bufrw.UInt16BE.readFrom(buffer, offset);
