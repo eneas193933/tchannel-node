@@ -129,6 +129,9 @@ function readFrameFrom(buffer, offset) {
         return res;
     }
     offset = res.offset;
+    if (res.value === null) {
+        throw new Error('wat ' + BodyType.RW.readFrom.name);
+    }
     frame.body = res.value;
 
     res.value = frame;
