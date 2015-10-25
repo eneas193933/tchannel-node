@@ -21,6 +21,8 @@
 'use strict';
 
 var bufrw = require('bufrw');
+
+var ObjectPool = require('../lib/object-pool.js');
 var Checksum = require('./checksum');
 var ArgsRW = require('./args');
 var Frame = require('./frame');
@@ -28,14 +30,27 @@ var CallFlags = require('./call_flags');
 var argsrw = ArgsRW();
 
 // flags:1 csumtype:1 (csum:4){0,1} (arg~2)+
-function CallRequestCont(flags, csum, args) {
+function CallRequestCont() {
     var self = this;
+
     self.type = CallRequestCont.TypeCode;
-    self.flags = flags || 0;
-    self.csum = Checksum.objOrType(csum);
-    self.args = args || [];
+    self.flags = 0;
+    self.csum = Checksum.objOrType(0);
+    self.args = [];
     self.cont = null;
 }
+
+CallRequestCont.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.flags = 0;
+    self.csum = Checksum.objOrType(0); // TODO: self.csum.reset();
+    self.args.length = 0;
+    self.cont = null;
+};
+
+ObjectPool.setup(CallRequestCont);
 
 CallRequestCont.TypeCode = 0x13;
 CallRequestCont.Cont = CallRequestCont;
@@ -71,18 +86,25 @@ function callReqContLength(body) {
 
 function readCallReqContFrom(buffer, offset) {
     var res;
-    var body = new CallRequestCont();
+    var body = CallRequestCont.alloc();
 
     // flags:1
     res = bufrw.UInt8.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.flags = res.value;
 
     // csumtype:1 (csum:4){0,1} (arg~2)*
     res = argsrw.readFrom(body, buffer, offset);
-    if (!res.err) res.value = body;
+    if (res.err) {
+        body.free();
+        return res;
+    }
 
+    res.value = body;
     return res;
 }
 
@@ -111,14 +133,28 @@ CallRequestCont.prototype.verifyChecksum = function verifyChecksum(prior) {
 };
 
 // flags:1 csumtype:1 (csum:4){0,1} (arg~2)+
-function CallResponseCont(flags, csum, args) {
+function CallResponseCont() {
     var self = this;
+
     self.type = CallResponseCont.TypeCode;
-    self.flags = flags || 0;
-    self.csum = Checksum.objOrType(csum);
-    self.args = args || [];
+    self.flags = 0;
+    self.csum = Checksum.objOrType(0);
+    self.args = [];
     self.cont = null;
 }
+
+CallResponseCont.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.type = CallResponseCont.TypeCode;
+    self.flags = 0;
+    self.csum = Checksum.objOrType(0); // TODO: self.csum.reset();
+    self.args.length = 0;
+    self.cont = null;
+};
+
+ObjectPool.setup(CallResponseCont);
 
 CallResponseCont.TypeCode = 0x14;
 CallResponseCont.Cont = CallResponseCont;
@@ -154,18 +190,25 @@ function callResContLength(body) {
 
 function readCallResContFrom(buffer, offset) {
     var res;
-    var body = new CallResponseCont();
+    var body = CallResponseCont.alloc();
 
     // flags:1
     res = bufrw.UInt8.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.flags = res.value;
 
     // csumtype:1 (csum:4){0,1} (arg~2)*
     res = argsrw.readFrom(body, buffer, offset);
-    if (!res.err) res.value = body;
+    if (res.err) {
+        body.free();
+        return res;
+    }
 
+    res.value = body;
     return res;
 }
 
