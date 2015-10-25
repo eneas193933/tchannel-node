@@ -34,10 +34,64 @@ function Cancel(ttl, tracing, why) {
 
 Cancel.TypeCode = 0xc0;
 
-Cancel.RW = bufrw.Struct(Cancel, [
-    {name: 'ttl', rw: bufrw.UInt32BE}, // ttl:4
-    {name: 'tracing', rw: Tracing.RW}, // tracing:25
-    {name: 'why', rw: bufrw.str2}      // why~2
-]);
+Cancel.RW = bufrw.Base(cancelLength, readCancelInto, writeCancelInto);
+
+function cancelLength(body) {
+    var length = 0;
+
+    // ttl:4
+    length += bufrw.UInt32BE.width;
+
+    // tracing:25
+    length += 25; // Tracing.RW
+
+    // why~2
+    var res = bufrw.str2.byteLength(body.why);
+    if (!res.err) res.length += length;
+
+    return res;
+}
+
+function readCancelInto(buffer, offset) {
+    var res;
+    var body = new Cancel();
+
+    // ttl:4
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.ttl = res.value;
+
+    // tracing:25
+    res = Tracing.RW.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.tracing = res.value;
+
+    // why~2
+    res = bufrw.str2.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.why = res.value;
+
+    return res;
+}
+
+function writeCancelInto(body, buffer, offset) {
+    var res;
+
+    // ttl:4
+    res = bufrw.UInt32BE.writeInto(body.ttl, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // tracing:25
+    res = Tracing.RW.writeInto(body.tracing, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // why~2
+    return bufrw.str2.writeInto(body.why, buffer, offset);
+}
 
 module.exports = Cancel;
