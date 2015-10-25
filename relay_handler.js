@@ -23,6 +23,7 @@
 var errors = require('./errors');
 var v2 = require('./v2');
 var stat = require('./lib/stat.js');
+var ObjectPool = require('./lib/object-pool.js');
 
 RelayHandler.RelayRequest = RelayRequest;
 
@@ -49,7 +50,7 @@ RelayHandler.prototype.handleLazily = function handleLazily(conn, reqFrame) {
         return false;
     }
 
-    var rereq = new LazyRelayInReq();
+    var rereq = LazyRelayInReq.alloc();
     rereq.init(conn, reqFrame, now);
 
     var err = rereq.initRead();
@@ -194,6 +195,48 @@ function init(conn, reqFrame, now) {
     self.id = self.reqFrame.id;
 };
 
+LazyRelayInReq.prototype.reset =
+function reset() {
+    var self = this;
+
+    if (self.reqFrame) {
+        self.reqFrame.free();
+    }
+    self.reqFrame = null;
+
+    if (self.outreq) {
+        self.outreq.free();
+    }
+    self.outreq = null;
+
+    for (var i = 0; i < self.reqContFrames.length; i++) {
+        self.reqContFrames[i].free();
+    }
+    self.reqContFrames.length = 0;
+
+    // TODO: free self.tracing
+
+    self.channel = null;
+    self.logger = null;
+    self.conn = null;
+    self.start = 0;
+    self.remoteAddr = '';
+    self.peer = null;
+    self.reqFrame = null;
+    self.id = 0;
+    self.serviceName = '';
+    self.callerName = '';
+    self.timeout = 0;
+    self.alive = true;
+    self.operations = null;
+    self.timeHeapHandle = null;
+    self.endpoint = '';
+    self.error = null;
+    self.tracing = null;
+};
+
+ObjectPool.setup(LazyRelayInReq);
+
 LazyRelayInReq.prototype.type = 'tchannel.lazy.incoming-request';
 
 LazyRelayInReq.prototype.initRead =
@@ -335,19 +378,19 @@ function forwardTo(conn) {
         return;
     }
 
-    self.outreq = new LazyRelayOutReq();
+    self.outreq = LazyRelayOutReq.alloc();
     self.outreq.init(conn, self, now);
 
     self.outreq.timeout = ttl;
     conn.ops.addOutReq(self.outreq);
     self._forwardFrame(self.reqFrame);
+    self.reqFrame.free();
     self.reqFrame = null;
 
     for (var i = 0; i < self.reqContFrames.length; i++) {
         self._forwardFrame(self.reqContFrames[i]);
         self.reqContFrames[i].free();
     }
-
     self.reqContFrames.length = 0;
 
     now = self.channel.timers.now();
@@ -357,6 +400,10 @@ function forwardTo(conn) {
         now - self.start,
         new stat.RelayLatencyTags()
     ));
+
+    if (!self.alive && !(self.outreq && self.outreq.alive)) {
+        self.free();
+    }
 };
 
 LazyRelayInReq.prototype.updateTTL =
@@ -407,7 +454,9 @@ function onError(err) {
         relayDirection: 'in'
     }));
 
-    self.reqContFrames.length = 0;
+    if (!(self.outreq && self.outreq.alive)) {
+        self.free();
+    }
 };
 
 LazyRelayInReq.prototype.sendErrorFrame =
@@ -421,6 +470,9 @@ function handleFrameLazily(frame) {
     var self = this;
 
     self._forwardFrame(frame);
+    if (!self.alive && !(self.outreq && self.outreq.alive)) {
+        self.free();
+    }
 };
 
 LazyRelayInReq.prototype._forwardFrame =
@@ -558,10 +610,30 @@ function init(conn, inreq, now) {
     self.id = self.conn.nextFrameId();
     self.serviceName = self.inreq.serviceName;
     self.callerName = self.inreq.callerName;
+};
+
+LazyRelayOutReq.prototype.reset =
+function reset() {
+    var self = this;
+
+    // self.inreq owns this
+
+    self.channel = null;
+    self.logger = null;
+    self.conn = null;
+    self.alive = true;
+    self.start = 0;
+    self.remoteAddr = '';
+    self.inreq = null;
+    self.id = 0;
+    self.serviceName = '';
+    self.callerName = '';
     self.timeout = 0;
     self.operations = null;
     self.timeHeapHandle = null;
 };
+
+ObjectPool.setup(LazyRelayOutReq);
 
 LazyRelayOutReq.prototype.extendLogInfo =
 function extendLogInfo(info) {
@@ -657,6 +729,9 @@ function handleFrameLazily(frame) {
     var self = this;
 
     self._forwardFrame(frame);
+    if (!self.alive && !self.inreq.alive) {
+        self.inreq.free();
+    }
 };
 
 LazyRelayOutReq.prototype._forwardFrame =
