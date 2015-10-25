@@ -22,6 +22,7 @@
 
 var bufrw = require('bufrw');
 
+var ObjectPool = require('../lib/object-pool.js');
 var errors = require('../errors');
 var ArgsRW = require('./args');
 var Checksum = require('./checksum');
@@ -45,18 +46,36 @@ module.exports.Response = CallResponse;
 /* jshint maxparams:10 */
 
 // flags:1 ttl:4 tracing:24 traceflags:1 service~1 nh:1 (hk~1 hv~1){nh} csumtype:1 (csum:4){0,1} (arg~2)*
-function CallRequest(flags, ttl, tracing, service, headers, csum, args) {
+function CallRequest() {
     var self = this;
+
     self.type = CallRequest.TypeCode;
-    self.flags = flags || 0;
-    self.ttl = ttl || 0;
-    self.tracing = tracing || Tracing.emptyTracing;
-    self.service = service || '';
-    self.headers = headers || {};
-    self.csum = Checksum.objOrType(csum);
-    self.args = args || [];
+    self.flags = 0;
+    self.ttl = 0;
+    self.tracing = Tracing.emptyTracing; // TODO: create and own a new empty instance
+    self.service = '';
+    self.headers = {};
+    self.csum = Checksum.objOrType(0);
+    self.args = [];
     self.cont = null;
+
 }
+
+CallRequest.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.flags = 0;
+    self.ttl = 0;
+    self.tracing = Tracing.emptyTracing;
+    self.service = '';
+    self.headers = {};
+    self.csum = Checksum.objOrType(0); // TODO: self.csum.reset();
+    self.args.length = 0;
+    self.cont = null;
+};
+
+ObjectPool.setup(CallRequest);
 
 CallRequest.Cont = require('./cont').RequestCont;
 CallRequest.TypeCode = 0x03;
@@ -172,9 +191,7 @@ function callReqLength(body) {
     length += bufrw.UInt32BE.width;
 
     // tracing:24 traceflags:1
-    res = Tracing.RW.byteLength(body.tracing);
-    if (res.err) return res;
-    length += res.length;
+    length += 25;
 
     // service~1
     res = bufrw.str1.byteLength(body.service);
@@ -195,19 +212,26 @@ function callReqLength(body) {
 
 function readCallReqFrom(buffer, offset) {
     var res;
-    var body = new CallRequest();
+    var body = CallRequest.alloc();
 
     // flags:1
     res = bufrw.UInt8.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.flags = res.value;
 
     // ttl:4
     res = bufrw.UInt32BE.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
 
     if (res.value <= 0) {
+        body.free();
         return bufrw.ReadResult.error(errors.InvalidTTL({
             ttl: res.value
         }), offset, body);
@@ -218,26 +242,39 @@ function readCallReqFrom(buffer, offset) {
 
     // tracing:24 traceflags:1
     res = Tracing.RW.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.tracing = res.value;
 
     // service~1
     res = bufrw.str1.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.service = res.value;
 
     // nh:1 (hk~1 hv~1){nh}
     res = header.header1.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.headers = res.value;
 
     // csumtype:1 (csum:4){0,1} (arg~2)*
     res = argsrw.readFrom(body, buffer, offset);
-    if (!res.err) res.value = body;
+    if (res.err) {
+        body.free();
+        return res;
+    }
 
+    res.value = body;
     return res;
 }
 
@@ -292,17 +329,33 @@ CallRequest.prototype.verifyChecksum = function verifyChecksum() {
 };
 
 // flags:1 code:1 tracing:24 traceflags:1 nh:1 (hk~1 hv~1){nh} csumtype:1 (csum:4){0,1} (arg~2)*
-function CallResponse(flags, code, tracing, headers, csum, args) {
+function CallResponse() {
     var self = this;
+
     self.type = CallResponse.TypeCode;
-    self.flags = flags || 0;
-    self.code = code || CallResponse.Codes.OK;
-    self.tracing = tracing || Tracing.emptyTracing;
-    self.headers = headers || {};
-    self.csum = Checksum.objOrType(csum);
-    self.args = args || [];
+    self.flags = 0;
+    self.code = CallResponse.Codes.OK;
+    self.tracing = Tracing.emptyTracing;
+    self.headers = {};
+    self.csum = Checksum.objOrType(0);
+    self.args = [];
     self.cont = null;
 }
+
+CallResponse.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.flags = 0;
+    self.code = CallResponse.Codes.OK;
+    self.tracing = Tracing.emptyTracing;
+    self.headers = {};
+    self.csum = Checksum.objOrType(0); // TODO: self.csum.reset();
+    self.args.length = 0;
+    self.cont = null;
+};
+
+ObjectPool.setup(CallResponse);
 
 CallResponse.Cont = require('./cont').ResponseCont;
 CallResponse.TypeCode = 0x04;
@@ -405,36 +458,52 @@ function callResLength(body) {
 
 function readCallResFrom(buffer, offset) {
     var res;
-    var body = new CallResponse();
+    var body = CallResponse.alloc();
 
     // flags:1
     res = bufrw.UInt8.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.flags = res.value;
 
     // code:1
     res = bufrw.UInt8.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.code = res.value;
 
     // tracing:24 traceflags:1
     res = Tracing.RW.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.tracing = res.value;
 
     // nh:1 (hk~1 hv~1){nh}
     res = header.header1.readFrom(buffer, offset);
-    if (res.err) return res;
+    if (res.err) {
+        body.free();
+        return res;
+    }
     offset = res.offset;
     body.headers = res.value;
 
     // csumtype:1 (csum:4){0,1} (arg~2)*
     res = argsrw.readFrom(body, buffer, offset);
-    if (!res.err) res.value = body;
+    if (res.err) {
+        body.free();
+        return res;
+    }
 
+    res.value = body;
     return res;
 }
 
