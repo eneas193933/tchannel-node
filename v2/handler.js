@@ -835,7 +835,7 @@ TChannelV2Handler.prototype.sendCallBodies =
 function sendCallBodies(id, body, checksum, chanStat, tags) {
     var self = this;
     var channel = self.connection.channel;
-    var frame;
+    var frame = new v2.Frame();
 
     var size = 0;
     // jshint boss:true
@@ -844,7 +844,6 @@ function sendCallBodies(id, body, checksum, chanStat, tags) {
             body.csum = checksum;
         }
 
-        frame = new v2.Frame();
         frame.id = id;
         frame.body = body;
         frame.type = body.type;
