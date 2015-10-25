@@ -144,29 +144,83 @@ ErrorResponse.Codes = Codes;
 ErrorResponse.CodeNames = CodeNames;
 ErrorResponse.CodeErrors = CodeErrors;
 
-ErrorResponse.RW = bufrw.Struct(ErrorResponse, [
-    {call: {writeInto: function writeGuard(body, buffer, offset) {
-        if (CodeNames[body.code] === undefined) {
-            return WriteResult.error(errors.InvalidErrorCodeError({
-                errorCode: body.code,
-                tracing: body.tracing
-            }), offset);
-        }
-        return WriteResult.just(offset);
-    }}},
-    {name: 'code', rw: bufrw.UInt8},    // code:1
-    {name: 'tracing', rw: Tracing.RW},  // tracing:25
-    {name: 'message', rw: bufrw.str2},  // message~2
-    {call: {writeInto: function writeGuard(body, buffer, offset) {
-        if (CodeNames[body.code] === undefined) {
-            return ReadResult.error(errors.InvalidErrorCodeError({
-                errorCode: body.code,
-                tracing: body.tracing,
-            }), offset);
-        }
-        return ReadResult.just(offset);
-    }}},
-]);
+ErrorResponse.RW = bufrw.Base(errResLength, readErrResFrom, writeErrResInto);
+
+function errResLength(body) {
+    var res;
+    var length = 0;
+
+    // code:1
+    length += bufrw.UInt8.width;
+
+    // tracing:25
+    length += 25; // Tracing.RW
+
+    // message~2
+    res = bufrw.str2.byteLength(body.message);
+    if (res.body) return res;
+    length += res.length;
+
+    res.length = length;
+    return res;
+}
+
+function readErrResFrom(buffer, offset) {
+    var res;
+    var body = new ErrorResponse();
+
+    // code:1
+    res = bufrw.UInt8.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.code = res.value;
+
+    // tracing:25
+    res = Tracing.RW.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.tracing = res.value;
+
+    if (CodeNames[body.code] === undefined) {
+        return ReadResult.error(errors.InvalidErrorCodeError({
+            errorCode: body.code,
+            tracing: body.tracing,
+        }), offset);
+    }
+
+    // message~2
+    res = bufrw.str2.readFrom(buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+    body.message = res.value;
+
+    res.value = body;
+    return res;
+}
+
+function writeErrResInto(body, buffer, offset) {
+    var res;
+
+    if (CodeNames[body.code] === undefined) {
+        return WriteResult.error(errors.InvalidErrorCodeError({
+            errorCode: body.code,
+            tracing: body.tracing
+        }), offset);
+    }
+
+    // code:1
+    res = bufrw.UInt8.writeInto(body.code, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // tracing:25
+    res = Tracing.RW.writeInto(body.tracing, buffer, offset);
+    if (res.err) return res;
+    offset = res.offset;
+
+    // message~2
+    return bufrw.str2.writeInto(body.message, buffer, offset);
+}
 
 ErrorResponse.RW.lazy = {};
 
