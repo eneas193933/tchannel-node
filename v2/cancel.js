@@ -22,17 +22,30 @@
 
 var bufrw = require('bufrw');
 var Tracing = require('./tracing');
+var ObjectPool = require('../lib/object-pool.js');
 
 // ttl:4 tracing:25 why~2
-function Cancel(ttl, tracing, why) {
+function Cancel() {
     var self = this;
+
     self.type = Cancel.TypeCode;
-    self.ttl = ttl || 0;
-    self.tracing = tracing || Tracing.emptyTracing;
-    self.why = why || '';
+    self.ttl = 0;
+    self.tracing = Tracing.emptyTracing;
+    self.why = '';
 }
 
 Cancel.TypeCode = 0xc0;
+
+Cancel.prototype.reset =
+function reset() {
+    var self = this;
+
+    self.ttl = 0;
+    self.tracing = Tracing.emptyTracing;
+    self.why = '';
+};
+
+ObjectPool.setup(Cancel);
 
 Cancel.RW = bufrw.Base(cancelLength, readCancelInto, writeCancelInto);
 
@@ -54,7 +67,7 @@ function cancelLength(body) {
 
 function readCancelInto(buffer, offset) {
     var res;
-    var body = new Cancel();
+    var body = Cancel.alloc();
 
     // ttl:4
     res = bufrw.UInt32BE.readFrom(buffer, offset);
