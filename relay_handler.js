@@ -340,11 +340,12 @@ function forwardTo(conn) {
 
     self.outreq.timeout = ttl;
     conn.ops.addOutReq(self.outreq);
-    self.handleFrameLazily(self.reqFrame);
+    self._forwardFrame(self.reqFrame);
     self.reqFrame = null;
 
     for (var i = 0; i < self.reqContFrames.length; i++) {
-        self.handleFrameLazily(self.reqContFrames[i]);
+        self._forwardFrame(self.reqContFrames[i]);
+        self.reqContFrames[i].free();
     }
 
     self.reqContFrames.length = 0;
@@ -417,6 +418,13 @@ function sendErrorFrame(codeName, message) {
 
 LazyRelayInReq.prototype.handleFrameLazily =
 function handleFrameLazily(frame) {
+    var self = this;
+
+    self._forwardFrame(frame);
+};
+
+LazyRelayInReq.prototype._forwardFrame =
+function _forwardFrame(frame) {
     // frame.type will be one of:
     // - v2.Types.CallRequest
     // - v2.Types.CallRequestCont
@@ -640,6 +648,13 @@ function onTimeout(now) {
 
 LazyRelayOutReq.prototype.handleFrameLazily =
 function handleFrameLazily(frame) {
+    var self = this;
+
+    self._forwardFrame(frame);
+};
+
+LazyRelayOutReq.prototype._forwardFrame =
+function _forwardFrame(frame) {
     // frame.type will be one of:
     // - v2.Types.CallResponse
     // - v2.Types.CallResponseCont
