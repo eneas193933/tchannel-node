@@ -625,6 +625,10 @@ function emitError(err) {
     }
 
     self.alive = false;
+    self.conn.ops.popOutReq(self.id, self.extendLogInfo({
+        info: 'lazy relay request error',
+        relayDirection: 'out'
+    }));
     self.inreq.onError(err);
 };
 
