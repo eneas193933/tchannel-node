@@ -531,6 +531,7 @@ function LazyRelayOutReq() {
     self.channel = null;
     self.logger = null;
     self.conn = null;
+    self.alive = true;
     self.start = 0;
     self.remoteAddr = '';
     self.inreq = null;
@@ -623,6 +624,7 @@ function emitError(err) {
         self.inreq.circuit.state.onRequestError(err);
     }
 
+    self.alive = false;
     self.inreq.onError(err);
 };
 
@@ -661,9 +663,15 @@ function _forwardFrame(frame) {
     // - v2.Types.ErrorResponse
     var self = this;
 
+    if (!self.alive) {
+        self.logger.warn('dropping frame from dead relay request', self.extendLogInfo({}));
+        return;
+    }
+
     frame.setId(self.inreq.id);
     self.inreq.conn.socket.write(frame.buffer);
     if (frame.bodyRW.lazy.isFrameTerminal(frame)) {
+        self.alive = false;
         self.conn.ops.popOutReq(self.id, self.extendLogInfo({
             info: 'lazy relay request done',
             relayDirection: 'out'
