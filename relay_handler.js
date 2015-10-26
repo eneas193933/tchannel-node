@@ -307,13 +307,8 @@ function createOutRequest() {
 };
 
 LazyRelayInReq.prototype.onIdentified =
-function onIdentified(err) {
+function onIdentified() {
     var self = this;
-
-    if (err) {
-        self.onError(err);
-        return;
-    }
 
     var conn = chooseRelayPeerConnection(self.peer);
     if (!conn.remoteName) {
