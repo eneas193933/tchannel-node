@@ -34,56 +34,55 @@ var States = require('./reqres_states');
 
 function TChannelOutRequest(id, options) {
     /*eslint max-statements: [2, 50], complexity: [2, 25]*/
-    var self = this;
 
-    EventEmitter.call(self);
-    self.errorEvent = self.defineEvent('error');
-    self.responseEvent = self.defineEvent('response');
-    self.finishEvent = self.defineEvent('finish');
+    EventEmitter.call(this);
+    this.errorEvent = this.defineEvent('error');
+    this.responseEvent = this.defineEvent('response');
+    this.finishEvent = this.defineEvent('finish');
 
     // TODO perhaps these ought not be options
     assert(options.channel, 'channel required');
     assert(options.peer, 'peer required');
     assert(id, 'id is required');
 
-    self.retryCount = options.retryCount || 0;
-    self.channel = options.channel;
-    self.peer = options.peer;
-    self.logical = options.logical || false;
-    self.parent = options.parent || null;
-    self.hasNoParent = options.hasNoParent || false;
+    this.retryCount = options.retryCount || 0;
+    this.channel = options.channel;
+    this.peer = options.peer;
+    this.logical = options.logical || false;
+    this.parent = options.parent || null;
+    this.hasNoParent = options.hasNoParent || false;
 
-    self.remoteAddr = options.remoteAddr || '';
-    self.timeout = options.timeout || 0;
-    self.tracing = options.tracing || null;
-    self.serviceName = options.serviceName || '';
-    self.callerName = options.headers && options.headers.cn || '';
-    self.headers = options.headers || {};
-    self.checksumType = options.checksumType || 0;
-    self.checksum = options.checksum || null;
-    self.forwardTrace = options.forwardTrace || false;
+    this.remoteAddr = options.remoteAddr || '';
+    this.timeout = options.timeout || 0;
+    this.tracing = options.tracing || null;
+    this.serviceName = options.serviceName || '';
+    this.callerName = options.headers && options.headers.cn || '';
+    this.headers = options.headers || {};
+    this.checksumType = options.checksumType || 0;
+    this.checksum = options.checksum || null;
+    this.forwardTrace = options.forwardTrace || false;
 
     // All self requests have id 0
-    self.operations = null;
-    self.timeHeapHandle = null;
-    self.id = id;
-    self.state = States.Initial;
-    self.start = 0;
-    self.end = 0;
-    self.streamed = false;
-    self.arg1 = null;
-    self.endpoint = '';
-    self.span = null;
-    self.err = null;
-    self.res = null;
+    this.operations = null;
+    this.timeHeapHandle = null;
+    this.id = id;
+    this.state = States.Initial;
+    this.start = 0;
+    this.end = 0;
+    this.streamed = false;
+    this.arg1 = null;
+    this.endpoint = '';
+    this.span = null;
+    this.err = null;
+    this.res = null;
 
     // set for requests created on draining connections
-    self.drained = false;
-    self.drainReason = '';
+    this.drained = false;
+    this.drainReason = '';
 
-    if (options.channel.tracer && !self.forwardTrace) {
+    if (options.channel.tracer && !this.forwardTrace) {
         // new span with new ids
-        self.setupTracing(options);
+        this.setupTracing(options);
     }
 }
 
@@ -240,23 +239,42 @@ TChannelOutRequest.prototype.emitError = function emitError(err) {
 TChannelOutRequest.prototype.extendLogInfo = function extendLogInfo(info) {
     var self = this;
 
-    info.requestId = self.id;
-    info.requestType = self.type;
-    info.requestState = States.describe(self.state);
-    info.requestRemoteAddr = self.remoteAddr;
+    info.outRequestId = self.id;
+    info.outRequestType = self.type;
+    info.outRequestState = States.describe(self.state);
+    info.outRequestRemoteAddr = self.remoteAddr;
     info.serviceName = self.serviceName;
-    info.requestErr = self.err;
+    info.outRequestErr = self.err;
 
     if (self.endpoint !== null) {
-        info.requestArg1 = self.endpoint;
+        info.outRequestArg1 = self.endpoint;
     } else {
-        info.requestArg1 = String(self.arg1);
+        info.outRequestArg1 = String(self.arg1);
     }
 
     return info;
 };
 
 TChannelOutRequest.prototype.emitResponse = function emitResponse(res) {
+    var self = this;
+
+    self.res = res;
+    self.res.span = self.span;
+
+    if (!self.res.streamed) {
+        self.markEnd();
+    } else {
+        self.res.finishEvent.on(onFinished);
+    }
+
+    self.responseEvent.emit(self, self.res);
+
+    function onFinished() {
+        self.markEnd();
+    }
+};
+
+TChannelOutRequest.prototype.markEnd = function markEnd() {
     var self = this;
 
     self.peer.invalidateScore('outreq.emitResponse');
@@ -274,13 +292,8 @@ TChannelOutRequest.prototype.emitResponse = function emitResponse(res) {
         self.end = self.channel.timers.now();
     }
 
-    self.res = res;
-    self.res.span = self.span;
-
     self.emitPerAttemptLatency();
-    self.emitPerAttemptResponseStat(res);
-
-    self.responseEvent.emit(self, res);
+    self.emitPerAttemptResponseStat(self.res);
 };
 
 TChannelOutRequest.prototype.sendParts = function sendParts(parts, isLast) {

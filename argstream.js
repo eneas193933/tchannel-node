@@ -47,42 +47,42 @@ var clearImmediate = require('timers').clearImmediate;
 var errors = require('./errors');
 
 function ArgStream() {
+    EventEmitter.call(this);
+    this.errorEvent = this.defineEvent('error');
+    this.frameEvent = this.defineEvent('frame');
+    this.finishEvent = this.defineEvent('finish');
+    this.arg2 = new StreamArg();
+    this.arg3 = new StreamArg();
+
     var self = this;
-    EventEmitter.call(self);
-    self.errorEvent = self.defineEvent('error');
-    self.frameEvent = self.defineEvent('frame');
-    self.finishEvent = self.defineEvent('finish');
+    this.arg2.on('error', passError);
+    this.arg3.on('error', passError);
+    this.arg3.on('start', onArg3Start);
 
-    self.arg2 = StreamArg();
-    self.arg3 = StreamArg();
-
-    self.arg2.on('error', passError);
-    self.arg3.on('error', passError);
     function passError(err) {
         self.errorEvent.emit(self, err);
     }
 
-    self.arg3.on('start', function onArg3Start() {
+    function onArg3Start() {
         if (!self.arg2._writableState.ended) {
             self.arg2.end();
         }
-    });
+    }
 }
 
 inherits(ArgStream, EventEmitter);
 
 function InArgStream() {
-    if (!(this instanceof InArgStream)) {
-        return new InArgStream();
-    }
+    ArgStream.call(this);
+    this.streams = [this.arg2, this.arg3];
+    this._iStream = 0;
+    this.finished = false;
+    this._numFinished = 0;
+
     var self = this;
-    ArgStream.call(self);
-    self.streams = [self.arg2, self.arg3];
-    self._iStream = 0;
-    self.finished = false;
-    self._numFinished = 0;
-    self.arg2.on('finish', argFinished);
-    self.arg3.on('finish', argFinished);
+    this.arg2.on('finish', argFinished);
+    this.arg3.on('finish', argFinished);
+
     function argFinished() {
         if (++self._numFinished >= 2 && !self.finished) {
             self.finished = true;
@@ -135,33 +135,38 @@ InArgStream.prototype.handleFrame = function handleFrame(parts, isLast) {
 };
 
 function OutArgStream() {
-    if (!(this instanceof OutArgStream)) {
-        return new OutArgStream();
-    }
-    var self = this;
-    ArgStream.call(self);
-    self._flushImmed = null;
-    self.finished = false;
-    self.frame = [Buffer(0)];
-    self.currentArgN = 2;
-    self.arg2.on('data', function onArg2Data(chunk) {
-        self._handleFrameChunk(2, chunk);
-    });
-    self.arg3.on('data', function onArg3Data(chunk) {
-        self._handleFrameChunk(3, chunk);
-    });
+    ArgStream.call(this);
+    this._flushImmed = null;
+    this.finished = false;
+    this.frame = [Buffer(0)];
+    this.currentArgN = 2;
 
-    self.arg2.on('finish', function onArg2Finish() {
+    var self = this;
+    this.arg2.on('data', onArg2Data);
+    this.arg3.on('data', onArg3Data);
+    this.arg2.on('finish', onArg2Finish);
+    this.arg3.on('finish', onArg3Finish);
+
+    function onArg2Data(chunk) {
+        self._handleFrameChunk(2, chunk);
+    }
+
+    function onArg3Data(chunk) {
+        self._handleFrameChunk(3, chunk);
+    }
+
+    function onArg2Finish() {
         self._handleFrameChunk(2, null);
-    });
-    self.arg3.on('finish', function onArg3Finish() {
+    }
+
+    function onArg3Finish() {
         if (!self.finished) {
             self._handleFrameChunk(3, null);
             self._flushParts(true);
             self.finished = true;
             self.finishEvent.emit(self);
         }
-    });
+    }
 }
 
 inherits(OutArgStream, ArgStream);
@@ -230,14 +235,16 @@ OutArgStream.prototype._flushParts = function _flushParts(isLast) {
 };
 
 function StreamArg(options) {
-    if (!(this instanceof StreamArg)) {
-        return new StreamArg(options);
-    }
+    PassThrough.call(this, options);
+    this.started = false;
+    this.buf = null;
+    this.onValueReady = boundOnValueReady;
+
     var self = this;
-    PassThrough.call(self, options);
-    self.started = false;
-    self.onValueReady = self.onValueReady.bind(self);
-    self.buf = null;
+
+    function boundOnValueReady(callback) {
+        self._onValueReady(callback);
+    }
 }
 inherits(StreamArg, PassThrough);
 
@@ -250,7 +257,7 @@ StreamArg.prototype._write = function _write(chunk, encoding, callback) {
     PassThrough.prototype._write.call(self, chunk, encoding, callback);
 };
 
-StreamArg.prototype.onValueReady = function onValueReady(callback) {
+StreamArg.prototype._onValueReady = function onValueReady(callback) {
     var self = this;
     self.onValueReady = Ready();
     bufferStreamData(self, self.onValueReady.signal);

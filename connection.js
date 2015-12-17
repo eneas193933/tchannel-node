@@ -40,55 +40,57 @@ function TChannelConnection(channel, socket, direction, socketRemoteAddr) {
         'refusing to create self connection'
     );
 
-    var self = this;
-    TChannelConnectionBase.call(self, channel, direction, socketRemoteAddr);
-    self.identifiedEvent = self.defineEvent('identified');
+    TChannelConnectionBase.call(this, channel, direction, socketRemoteAddr);
+    this.identifiedEvent = this.defineEvent('identified');
 
     if (direction === 'out') {
-        if (self.channel.emitConnectionMetrics) {
-            self.channel.emitFastStat(
+        if (this.channel.emitConnectionMetrics) {
+            this.channel.emitFastStat(
                 'tchannel.connections.initiated',
                 'counter',
                 1,
                 new stat.ConnectionsInitiatedTags(
-                    self.channel.hostPort || '0.0.0.0:0',
+                    this.channel.hostPort || '0.0.0.0:0',
                     socketRemoteAddr
                 ));
         }
-    } else if (self.channel.emitConnectionMetrics) {
-        self.channel.emitFastStat(
+    } else if (this.channel.emitConnectionMetrics) {
+        this.channel.emitFastStat(
             'tchannel.connections.accepted',
             'counter',
             1,
             new stat.ConnectionsAcceptedTags(
-                self.channel.hostPort,
+                this.channel.hostPort,
                 socketRemoteAddr
             ));
     }
 
-    self.socket = socket;
-    self.ephemeral = false;
+    this.socket = socket;
+    this.ephemeral = false;
+    this.initHeaders = null;
 
+    var self = this;
+    // TODO: prototype this options shape
     var opts = {
-        logger: self.channel.logger,
-        random: self.channel.random,
-        timers: self.channel.timers,
-        hostPort: self.channel.hostPort,
-        requireAs: self.channel.requireAs,
-        requireCn: self.channel.requireCn,
-        tracer: self.tracer,
-        processName: self.options.processName,
-        connection: self,
+        logger: this.channel.logger,
+        random: this.channel.random,
+        timers: this.channel.timers,
+        hostPort: this.channel.hostPort,
+        requireAs: this.channel.requireAs,
+        requireCn: this.channel.requireCn,
+        tracer: this.tracer,
+        processName: this.options.processName,
+        connection: this,
         handleCallLazily: handleCallLazily
     };
 
-    self.handler = new v2.Handler(opts);
+    this.handler = new v2.Handler(opts);
 
-    self.mach = ReadMachine(bufrw.UInt16BE, v2.Frame.RW);
+    this.mach = ReadMachine(bufrw.UInt16BE, v2.Frame.RW);
 
-    self.setupSocket();
-    self.setupHandler();
-    self.start();
+    this.setupSocket();
+    this.setupHandler();
+    this.start();
 
     function handleCallLazily(frame) {
         return self.handleCallLazily(frame);
@@ -309,8 +311,8 @@ TChannelConnection.prototype.onErrorFrame = function onErrorFrame(errFrame) {
     switch (errFrame.body.code) {
 
     case v2.ErrorResponse.Codes.ProtocolError:
-        var codeErrorType = v2.ErrorResponse.CodeErrors[errFrame.body.code];
-        self.resetAll(codeErrorType({
+        var CodeErrorType = v2.ErrorResponse.CodeErrors[errFrame.body.code];
+        self.resetAll(new CodeErrorType({
             originalId: errFrame.id,
             message: String(errFrame.body.message)
         }));
@@ -375,7 +377,7 @@ TChannelConnection.prototype.handleReadFrame = function handleReadFrame(frame) {
     var self = this;
 
     if (!self.closing) {
-        self.ops.lastTimeoutTime = 0;
+        self.ops.resetLastTimeoutTime();
     }
 
     self.handler.handleFrame(frame);
@@ -455,8 +457,8 @@ function onCallErrorFrame(errFrame) {
     var req = self.ops.getOutReq(id);
     // TODO: req could rarely be a lazy req, then maybe call req.handleFrameLazily
 
-    var codeErrorType = v2.ErrorResponse.CodeErrors[errFrame.body.code];
-    var err = codeErrorType({
+    var CodeErrorType = v2.ErrorResponse.CodeErrors[errFrame.body.code];
+    var err = new CodeErrorType({
         originalId: id,
         message: String(errFrame.body.message),
         remoteAddr: self.remoteName
@@ -537,6 +539,7 @@ TChannelConnection.prototype.onOutIdentified = function onOutIdentified(init) {
         }));
     }
 
+    self.initHeaders = init;
     self.remoteName = init.hostPort;
     self.identifiedEvent.emit(self, {
         hostPort: init.hostPort,
@@ -555,6 +558,7 @@ TChannelConnection.prototype.onInIdentified = function onInIdentified(init) {
         self.remoteName = init.hostPort;
     }
 
+    self.initHeaders = init;
     self.channel.peers.add(self.remoteName).addConnection(self);
     self.identifiedEvent.emit(self, {
         hostPort: self.remoteName,
@@ -595,7 +599,10 @@ TChannelConnection.prototype.buildOutRequest = function buildOutRequest(options)
     return req;
 
     function onReqError(err) {
-        self.ops.popOutReq(req.id, err);
+        // The timeout path already popped the error
+        if (self.ops.getOutReq(req.id)) {
+            self.ops.popOutReq(req.id, err);
+        }
     }
 };
 

@@ -20,7 +20,11 @@
 
 'use strict';
 
+/* eslint-disable curly */
+/* eslint max-statements: [1, 31] */
+
 var bufrw = require('bufrw');
+var Buffer = require('buffer').Buffer;
 
 module.exports = Tracing;
 
@@ -32,11 +36,10 @@ emptyParentId.fill(0);
 emptyTraceId.fill(0);
 
 function Tracing(spanid, parentid, traceid, flags) {
-    var self = this;
-    self.spanid = spanid || [0, 0];
-    self.parentid = parentid || [0, 0];
-    self.traceid = traceid || [0, 0];
-    self.flags = flags || 0;
+    this.spanid = spanid || [0, 0];
+    this.parentid = parentid || [0, 0];
+    this.traceid = traceid || [0, 0];
+    this.flags = flags || 0;
 }
 
 Tracing.RW = bufrw.Base(tracingByteLength, readTracingFrom, writeTracingInto);
@@ -86,32 +89,32 @@ function readTracingFrom(buffer, offset) {
     var tracing = new Tracing();
     var res;
 
-    res = bufrw.UInt32BE.readFrom(buffer,offset);
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
     if (res.err) return res;
     offset = res.offset;
     tracing.spanid[0] = res.value;
 
-    res = bufrw.UInt32BE.readFrom(buffer,offset);
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
     if (res.err) return res;
     offset = res.offset;
     tracing.spanid[1] = res.value;
 
-    res = bufrw.UInt32BE.readFrom(buffer,offset);
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
     if (res.err) return res;
     offset = res.offset;
     tracing.parentid[0] = res.value;
 
-    res = bufrw.UInt32BE.readFrom(buffer,offset);
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
     if (res.err) return res;
     offset = res.offset;
     tracing.parentid[1] = res.value;
 
-    res = bufrw.UInt32BE.readFrom(buffer,offset);
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
     if (res.err) return res;
     offset = res.offset;
     tracing.traceid[0] = res.value;
 
-    res = bufrw.UInt32BE.readFrom(buffer,offset);
+    res = bufrw.UInt32BE.readFrom(buffer, offset);
     if (res.err) return res;
     offset = res.offset;
     tracing.traceid[1] = res.value;

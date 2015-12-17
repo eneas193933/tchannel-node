@@ -28,39 +28,35 @@ var setImmediate = require('timers').setImmediate;
 var EventEmitter = require('./lib/event_emitter');
 
 var TOMBSTONE_TTL_OFFSET = 500;
-var MAX_TOMBSTONE_TTL = 5000;
 
 module.exports = Operations;
 
 function Operations(opts) {
-    var self = this;
+    EventEmitter.call(this);
+    this.draining = false;
+    this.drainEvent = this.defineEvent('drain');
+    this.pendingChangeEvent = this.defineEvent('pendingChange');
+    this.pendingChangeDelta = null;
 
-    EventEmitter.call(self);
-    self.draining = false;
-    self.drainEvent = self.defineEvent('drain');
-    self.pendingChangeEvent = self.defineEvent('pendingChange');
-    self.pendingChangeDelta = null;
-
-    self.timers = opts.timers;
-    self.logger = opts.logger;
-    self.random = opts.random;
-    self.connectionStalePeriod = opts.connectionStalePeriod;
-    self.maxTombstoneTTL = MAX_TOMBSTONE_TTL;
-
-    self.connection = opts.connection;
+    this.timers = opts.timers;
+    this.logger = opts.logger;
+    this.random = opts.random;
+    this.connectionStalePeriod = opts.connectionStalePeriod;
+    this.maxTombstoneTTL = opts.maxTombstoneTTL;
+    this.connection = opts.connection;
     // TODO need this?
-    self.destroyed = false;
+    this.destroyed = false;
 
-    self.requests = {
+    this.requests = {
         in: Object.create(null),
         out: Object.create(null)
     };
-    self.pending = {
+    this.pending = {
         in: 0,
         out: 0,
         errors: 0
     };
-    self.lastTimeoutTime = 0;
+    this.lastTimeoutTime = 0;
 }
 inherits(Operations, EventEmitter);
 
@@ -184,6 +180,12 @@ OperationTombstone.prototype.onTimeout = function onTimeout(now) {
     }
 
     self.timeHeapHandle = null;
+};
+
+Operations.prototype.resetLastTimeoutTime = function resetLastTimeoutTime() {
+    var self = this;
+
+    self.lastTimeoutTime = 0;
 };
 
 Operations.prototype.checkLastTimeoutTime = function checkLastTimeoutTime(now) {
@@ -397,11 +399,13 @@ function logMissingOutRequest(id, context) {
     }
 
     // This could be because of a confused / corrupted server.
-    self.logger.info('popOutReq received for unknown or lost id', {
-        context: context,
-        socketRemoteAddr: self.connection.socketRemoteAddr,
-        direction: self.connection.direction
-    });
+    self.logger.info('popOutReq received for unknown or lost id',
+        self.connection.extendLogInfo({
+            context: context,
+            socketRemoteAddr: self.connection.socketRemoteAddr,
+            direction: self.connection.direction
+        })
+    );
 };
 
 Operations.prototype.popInReq = function popInReq(id) {
@@ -490,6 +494,7 @@ Operations.prototype._sweepOps = function _sweepOps(ops, direction, callback) {
 
     nextOp(Object.keys(ops), 0, callback);
 
+    /*eslint complexity: 0*/
     function nextOp(opKeys, i, done) {
         if (i >= opKeys.length) {
             done(null);
@@ -498,7 +503,13 @@ Operations.prototype._sweepOps = function _sweepOps(ops, direction, callback) {
 
         var id = opKeys[i];
         var op = ops[id];
-        if (op === undefined) {
+
+        if (!Object.prototype.hasOwnProperty.call(ops, id)) {
+            setImmediate(deferNextOp);
+            return;
+        }
+
+        if (op === undefined && (id in ops)) {
             self.logger.warn('unexpected undefined operation', {
                 direction: direction,
                 id: id

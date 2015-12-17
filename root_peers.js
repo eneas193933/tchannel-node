@@ -29,17 +29,10 @@ var TChannelPeer = require('./peer');
 var TChannelSelfPeer = require('./self_peer');
 
 function TChannelRootPeers(channel, options) {
-    if (!(this instanceof TChannelRootPeers)) {
-        return new TChannelRootPeers(channel, options);
-    }
-
-    var self = this;
-    TChannelPeersBase.call(self, channel, options);
-
-    self.allocPeerEvent = self.defineEvent('allocPeer');
-    self.peerOptions = self.options.peerOptions || {};
-
-    self.selfPeer = null;
+    TChannelPeersBase.call(this, channel, options);
+    this.allocPeerEvent = this.defineEvent('allocPeer');
+    this.peerOptions = this.options.peerOptions || {};
+    this.selfPeer = null;
 }
 
 inherits(TChannelRootPeers, TChannelPeersBase);
@@ -93,7 +86,7 @@ TChannelRootPeers.prototype.getSelfPeer = function getSelfPeer() {
     var self = this;
 
     if (!self.selfPeer) {
-        self.selfPeer = TChannelSelfPeer(self.channel);
+        self.selfPeer = new TChannelSelfPeer(self.channel);
     }
     return self.selfPeer;
 };
@@ -113,7 +106,7 @@ TChannelRootPeers.prototype.add = function add(hostPort, options) {
 
     options = options || extend({}, self.peerOptions);
     options.preferConnectionDirection = self.preferConnectionDirection;
-    peer = TChannelPeer(self.channel, hostPort, options);
+    peer = new TChannelPeer(self.channel, hostPort, options);
     self.allocPeerEvent.emit(self, peer);
 
     self._map[hostPort] = peer;
